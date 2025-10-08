@@ -1,10 +1,12 @@
 import csv
 import os
 
+
 def cargar_matriz(nombre_archivo):
     matriz = []
     try:
-        with open(nombre_archivo, mode='r', newline='', encoding='utf-8') as archivo_csv:
+        with open(nombre_archivo, mode='r', newline='',
+                   encoding='utf-8') as archivo_csv:
             lector_csv = csv.reader(archivo_csv, delimiter=';')
             for fila in lector_csv:
                 if not fila:
@@ -19,6 +21,7 @@ def cargar_matriz(nombre_archivo):
         return None
     return matriz
 
+
 def imprimir_matriz(matriz,archivo):
     if not matriz:
         print("Matriz vacia o no se pudo leer")
@@ -26,6 +29,7 @@ def imprimir_matriz(matriz,archivo):
     print(f"Matriz cargada desde '{archivo}':")
     for fila in matriz:
         print(fila)
+
 
 if __name__ == "__main__":
     direccion = os.path.dirname(os.path.abspath(__file__))
