@@ -27,11 +27,12 @@ def matriz_a_grafo(matriz):
     grafo = {}
     nodos = [chr(65 + i) for i in range(len(matriz))]  # A, B, C, ...
     for i in range(len(matriz)):
-        origen = nodos[i]
-        grafo[origen] = []
+        grafo[nodos[i]] = []
+    for i in range(len(matriz)):
         for j in range(len(matriz[i])):
-            if matriz[i][j] > 0:  # hay arista
-                grafo[origen].append((nodos[j], matriz[i][j]))
+            if matriz[i][j] > 0 and i != j:
+                grafo[nodos[i]].append((nodos[j], matriz[i][j]))
+                print(f"Arista {nodos[i]} -> {nodos[j]} (costo {matriz[i][j]})")
     return grafo, nodos
 
 
@@ -68,6 +69,56 @@ def ramificacion_y_poda(grafo, inicio, objetivo, limite):
     return mejor_camino, (mejor_costo if mejor_camino else None), explorados, podados
 
 
+def dibujar_grafo(grafo, explorados, podados, mejor_camino):
+    G = nx.DiGraph()  
+
+    for nodo, vecinos in grafo.items():
+        for v, c in vecinos:
+            G.add_edge(nodo, v, weight=c)
+
+    pos = nx.spring_layout(G, seed=42)
+
+    # Nodos
+    nx.draw_networkx_nodes(G, pos, node_size=800, node_color="lightblue")
+    nx.draw_networkx_labels(G, pos, font_size=10, font_weight="bold")
+
+    # Todas las aristas con flechas
+    nx.draw_networkx_edges(
+        G, pos, edge_color="gray", arrows=True, arrowstyle="->", arrowsize=20
+    )
+
+    # Pesos de aristas
+    labels = nx.get_edge_attributes(G, "weight")
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=labels, font_size=9)
+
+    # Explorados (verde)
+    for camino, _ in explorados:
+        edges = [(camino[i], camino[i+1]) for i in range(len(camino)-1)]
+        nx.draw_networkx_edges(
+            G, pos, edgelist=edges, edge_color="green", width=2,
+            arrows=True, arrowstyle="->", arrowsize=20
+        )
+
+    # Podados (rojo punteado)
+    for camino, _ in podados:
+        edges = [(camino[i], camino[i+1]) for i in range(len(camino)-1)]
+        nx.draw_networkx_edges(
+            G, pos, edgelist=edges, edge_color="red", style="dashed",
+            arrows=True, arrowstyle="->", arrowsize=20
+        )
+
+    # Mejor camino (azul grueso)
+    if mejor_camino:
+        edges = [(mejor_camino[i], mejor_camino[i+1]) for i in range(len(mejor_camino)-1)]
+        nx.draw_networkx_edges(
+            G, pos, edgelist=edges, edge_color="blue", width=3,
+            arrows=True, arrowstyle="->", arrowsize=20
+        )
+
+    plt.title("(Verde=explorado, Rojo=podado, Azul=mejor camino)")
+    plt.axis("off")
+    plt.show()
+
 if __name__ == "__main__":
     # Cargar la matriz desde el CSV
     direccion = os.path.dirname(os.path.abspath(__file__))
@@ -89,42 +140,10 @@ if __name__ == "__main__":
         grafo, inicio, objetivo, limite
     )
 
-    # Dibujar el grafo
-    G = nx.DiGraph()
-    for nodo, vecinos in grafo.items():
-        for v, c in vecinos:
-            G.add_edge(nodo, v, weight=c)
-
-    pos = nx.spring_layout(G)
-    plt.figure(figsize=(8, 6))
-
-    nx.draw(
-        G, pos, with_labels=True,
-        node_size=800, node_color="lightblue",
-        font_size=10, font_weight="bold"
-    )
-    labels = nx.get_edge_attributes(G, "weight")
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=labels)
-
-    # Resaltar explorados (verde)
-    for camino_e, _ in explorados:
-        edges = [(camino_e[i], camino_e[i+1]) for i in range(len(camino_e)-1)]
-        nx.draw_networkx_edges(G, pos, edgelist=edges, edge_color="green", width=2)
-
-    # Resaltar podados (rojo)
-    for camino_p, _ in podados:
-        edges = [(camino_p[i], camino_p[i+1]) for i in range(len(camino_p)-1)]
-        nx.draw_networkx_edges(G, pos, edgelist=edges, edge_color="red", style="dashed")
-
-    # Mejor camino (azul)
     if mejor_camino:
-        edges = [(mejor_camino[i], mejor_camino[i+1]) for i in range(len(mejor_camino)-1)]
-        nx.draw_networkx_edges(G, pos, edgelist=edges, edge_color="blue", width=3)
-        print("\n Mejor camino dentro del límite:", " -> ".join(mejor_camino))
+        print("\n Mejor camino encontrado:", " -> ".join(mejor_camino))
         print("Costo total:", costo)
     else:
-        print("\n No se encontró un camino dentro del límite dado.")
-
-    plt.title("(verde=explorado, rojo=podado, azul=mejor camino)")
-    plt.show()
-
+        print("\n No se encontró un camino dentro del límite.")
+        
+    dibujar_grafo(grafo, explorados, podados, mejor_camino)
