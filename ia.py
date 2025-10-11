@@ -152,10 +152,11 @@ def dibujar_arbol_busqueda(tree_graph, ruta_final=None, titulo="Árbol de búsqu
     posibles_raices = [n for n in tree_graph.nodes if tree_graph.in_degree(n) == 0]
     root = posibles_raices[0] if posibles_raices else list(tree_graph.nodes)[0]
 
-    pos = hierarchy_pos(tree_graph, root=root, width=2.0, vert_gap=0.3)
+    pos = hierarchy_pos(tree_graph, root=root, width=2.5, vert_gap=0.3)
 
-    # === Configurar colores y etiquetas ===
+    # === Configurar colores, etiquetas y bordes ===
     node_colors = []
+    node_borders = []
     labels = {}
 
     def pertenece_a_ruta(nodo):
@@ -170,29 +171,49 @@ def dibujar_arbol_busqueda(tree_graph, ruta_final=None, titulo="Árbol de búsqu
         if data.get('pruned', False):
             label += " ❌"
             node_colors.append('#ffb3b3')  # rojo claro para podadas
+            node_borders.append('darkred')
         elif pertenece_a_ruta(node):
             node_colors.append('#7CFC00')  # verde brillante para ruta final
+            node_borders.append('green')
         else:
             node_colors.append('#ADD8E6')  # azul celeste normal
+            node_borders.append('gray')
         labels[node] = label
 
-    # === Dibujar el árbol ===
-    plt.figure(figsize=(13, 9))
-    nx.draw(tree_graph, pos,
-            labels=labels,
-            node_color=node_colors,
-            node_size=1800,
-            font_size=8,
-            font_weight='bold',
-            edge_color='gray',
-            arrows=True,
-            arrowstyle='-|>',
-            arrowsize=14)
+    # === Dibujar todo el árbol (sin ocultar ramas podadas) ===
+    plt.figure(figsize=(14, 9))
+
+    # Dibuja los nodos con colores
+    nx.draw_networkx_nodes(
+        tree_graph, pos,
+        node_color=node_colors,
+        node_size=1800,
+        edgecolors=node_borders,
+        linewidths=1.8
+    )
+
+    # Dibuja las aristas (todas)
+    nx.draw_networkx_edges(
+        tree_graph, pos,
+        edge_color='gray',
+        arrows=True,
+        arrowstyle='-|>',
+        arrowsize=14
+    )
+
+    # Dibuja etiquetas
+    nx.draw_networkx_labels(
+        tree_graph, pos,
+        labels=labels,
+        font_size=8,
+        font_weight='bold'
+    )
 
     plt.title(titulo, fontsize=14, fontweight='bold', pad=15)
     plt.axis('off')
     plt.tight_layout()
     plt.show()
+
 
 
 if __name__ == "__main__":
