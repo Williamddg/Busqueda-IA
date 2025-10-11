@@ -66,7 +66,7 @@ def busqueda_ramificacion_poda(matriz_principal, matriz_heuristica, etiquetas, i
         print(f"\n>> Expandir: {nodo_actual_etiqueta} (g={g}, h={h_actual}, f={f})")
 
         if nodo_actual_idx == idx_objetivo:
-            print("\n✅--- ¡Objetivo encontrado! ---")
+            print("\n✅ --- ¡Objetivo encontrado! ---")
             ruta_etiquetas = [etiquetas[i] for i in ruta]
             return ruta_etiquetas, g
 
@@ -111,9 +111,9 @@ if __name__ == "__main__":
     matriz_principal, etiquetas = cargar_matriz(nombre_matriz_principal)
     
     if not matriz_principal:
-        print(f"\nError: No se pudo cargar la matriz principal '{nombre_matriz_principal}', Terminando")
+        print(f"\n❗ Error: No se pudo cargar la matriz principal '{nombre_matriz_principal}', Terminando")
     else:
-        print("\n--- Matriz Principal Cargada Correctamente ---")
+        print("\n🆗 --- Matriz Principal Cargada Correctamente ---")
         print("Nodos encontrados:", etiquetas)
         print("-" * 35)
 
@@ -126,7 +126,7 @@ if __name__ == "__main__":
             num_nodos = len(etiquetas)
             matriz_heuristica = np.zeros((num_nodos, num_nodos), dtype=int).tolist()
         else:
-            print("\n--- Matriz Intermedia Cargada Correctamente ---")
+            print("\n🆗 --- Matriz Intermedia Cargada Correctamente ---")
             # Validar que las etiquetas coinciden
             if etiquetas != etiquetas_heuristica:
                 print("❗ Los nodos de las matrices no coinciden, Terminando")
