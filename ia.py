@@ -66,7 +66,7 @@ def busqueda_ramificacion_poda(matriz_principal, matriz_heuristica, etiquetas, i
         print(f"\n>> Expandir: {nodo_actual_etiqueta} (g={g}, h={h_actual}, f={f})")
 
         if nodo_actual_idx == idx_objetivo:
-            print("\n--- ¡Objetivo encontrado! ---")
+            print("\n✅--- ¡Objetivo encontrado! ---")
             ruta_etiquetas = [etiquetas[i] for i in ruta]
             return ruta_etiquetas, g
 
@@ -111,46 +111,55 @@ if __name__ == "__main__":
     matriz_principal, etiquetas = cargar_matriz(nombre_matriz_principal)
     
     if not matriz_principal:
-        print(f"Error fatal: No se pudo cargar la matriz principal '{nombre_matriz_principal}'. Abortando.")
+        print(f"\nError: No se pudo cargar la matriz principal '{nombre_matriz_principal}', Terminando")
     else:
-        print("--- Matriz Principal Cargada ---")
-        print("Etiquetas:", etiquetas)
+        print("\n--- Matriz Principal Cargada Correctamente ---")
+        print("Nodos encontrados:", etiquetas)
         print("-" * 35)
 
         # 2. Cargar la matriz de heurísticas (intermedia)
         matriz_heuristica, etiquetas_heuristica = cargar_matriz(nombre_matriz_intermedia)
         
         if not matriz_heuristica:
-            print("ADVERTENCIA: No se encontró 'matriz_intermedia.csv'. Se usará heurística h=0 por defecto.")
+            print("\n⚠️  No se encontro 'matriz_intermedia.csv'. Se usara heuristica h=0 por defecto.")
             # Crear una matriz de ceros con las dimensiones correctas
             num_nodos = len(etiquetas)
             matriz_heuristica = np.zeros((num_nodos, num_nodos), dtype=int).tolist()
         else:
-            print("--- Matriz de Heurísticas Cargada ---")
+            print("\n--- Matriz Intermedia Cargada Correctamente ---")
             # Validar que las etiquetas coinciden
             if etiquetas != etiquetas_heuristica:
-                print("Error fatal: Las etiquetas de las matrices no coinciden. Abortando.")
+                print("❗ Los nodos de las matrices no coinciden, Terminando")
                 exit()
         print("-" * 35)
 
-        # 3. Definir parámetros y ejecutar la búsqueda
+        # 3. Pedir HMAX por consola (debe ser entero > 0)
+        while True:
+            try:
+                HMAX = int(input("Ingrese el valor de H (entero mayor que 0): "))
+                if HMAX > 0:
+                    break
+                else:
+                    print("\n⚠️  El valor negativo invalido. Ingrese un numero positivo\n")
+            except ValueError:
+                print("\n⚠️  Valor decimal invalido. Ingrese un numero entero\n")
+
+        # 4. Definir parámetros y ejecutar la búsqueda
         INICIO = 'A'
-        # El objetivo 'Z' viene del nuevo CSV de ejemplo
-        OBJETIVO = 'Z' 
-        HMAX = 20
+        OBJETIVO = 'Z'
 
         if INICIO not in etiquetas or OBJETIVO not in etiquetas:
-            print(f"Error: El nodo de inicio '{INICIO}' o de objetivo '{OBJETIVO}' no está en el grafo.")
+            print(f"❗ El nodo de inicio '{INICIO}' o de objetivo '{OBJETIVO}' no se encuentran en el grafo.")
         else:
             ruta_final, costo_final = busqueda_ramificacion_poda(
                 matriz_principal, matriz_heuristica, etiquetas, INICIO, OBJETIVO, HMAX
             )
 
-            # 4. Mostrar resultados
+            # 5. Mostrar resultados
             if ruta_final:
-                print("\n--- Resultado Final ---")
-                print(f"Mejor ruta encontrada: {' -> '.join(ruta_final)}")
-                print(f"Costo total (g): {costo_final}")
+                print("\n\n--- Resultado Final ---")
+                print(f"Mejor ruta calculada: {' -> '.join(ruta_final)}")
+                print(f"Costo total : {costo_final}")
                 print("-" * 35)
             else:
                 print("\nNo se encontró una ruta al objetivo que cumpla con las restricciones.")
