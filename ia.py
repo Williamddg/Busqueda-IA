@@ -33,7 +33,10 @@ def cargar_matriz(nombre_archivo):
 
 def busqueda_ramificacion_poda(matriz_principal, matriz_heuristica, etiquetas, inicio, objetivo, Hmax):
     """
-    Realiza una búsqueda de ramificación y poda, y construye un grafo del árbol de búsqueda.
+    Realiza una búsqueda de ramificación y poda. Construye un árbol de visualización completo
+    explorando incluso las ramas marcadas como podadas. Para la visualización, explora todas
+    las rutas sin optimización de costos a nodos ya visitados.
+    Devuelve la primera ruta válida encontrada y detiene la expansión de una rama al llegar al objetivo.
     """
     try:
         idx_inicio = etiquetas.index(inicio)
@@ -52,80 +55,83 @@ def busqueda_ramificacion_poda(matriz_principal, matriz_heuristica, etiquetas, i
     ruta_inicial = [idx_inicio]
     nodo_id_inicial = etiquetas[idx_inicio]
     
-    pq.put((f_inicial, idx_inicio, g_inicial, ruta_inicial))
+    # La cola ahora guarda: (f, idx, g, ruta, padre_fue_podado)
+    pq.put((f_inicial, idx_inicio, g_inicial, ruta_inicial, False))
 
     if tree_graph is not None:
         label_text = f"{etiquetas[idx_inicio]}\ng={g_inicial} h={h_inicial} f={f_inicial}"
         tree_graph.add_node(nodo_id_inicial, label_text=label_text, pruned=False)
 
-    best_g = {i: float('inf') for i in range(len(etiquetas))}
-    best_g[idx_inicio] = g_inicial
+    primera_ruta_encontrada = None
+    costo_primera_ruta = float('inf')
 
-    print("\n--- Iniciando Búsqueda de Ramificación y Poda ---")
+    print("\n--- Iniciando Búsqueda de Ramificación y Poda (Visualización Total) ---")
     print(f"Inicio: {inicio}, Objetivo: {objetivo}, Límite Hmax = {Hmax}\n")
 
     while not pq.empty():
-        f, nodo_actual_idx, g, ruta = pq.get()
+        f, nodo_actual_idx, g, ruta, padre_fue_podado = pq.get()
         
         nodo_actual_etiqueta = etiquetas[nodo_actual_idx]
         nodo_actual_id = '->'.join([etiquetas[i] for i in ruta])
         h_actual = matriz_heuristica[nodo_actual_idx][idx_objetivo]
 
-        if g > best_g[nodo_actual_idx]:
-            continue
+        if padre_fue_podado and tree_graph is not None:
+            tree_graph.nodes[nodo_actual_id]['pruned'] = True
 
-        print(f"\n>> Expandir: {nodo_actual_etiqueta} (g={g}, h={h_actual}, f={f})")
+        print(f"\n-- Expandir: {nodo_actual_etiqueta} (g={g}, h={h_actual}, f={f})")
+        if padre_fue_podado:
+            print("    (Rama previamente podada, continuando para visualización)")
 
+        # Si encontramos el objetivo en una rama válida...
         if nodo_actual_idx == idx_objetivo:
-            print("\n✅ --- ¡Objetivo encontrado! ---")
-            ruta_etiquetas = [etiquetas[i] for i in ruta]
-            return ruta_etiquetas, g, tree_graph
+            if not padre_fue_podado and primera_ruta_encontrada is None:
+                print("\n✅ Primera ruta válida al objetivo encontrada (costo g={g})")
+                primera_ruta_encontrada = [etiquetas[i] for i in ruta]
+                costo_primera_ruta = g
+            
+            # Detener la expansión de ESTA rama, sea válida o no.
+            print(f"    -> Rama finalizada en el objetivo. No se expande más.")
+            continue
 
         for vecino_idx, peso in enumerate(matriz_principal[nodo_actual_idx]):
             if peso > 0:
                 vecino_etiqueta = etiquetas[vecino_idx]
                 
                 if vecino_idx in ruta:
-                    print(f"  - Hijo: {vecino_etiqueta}. DECISIÓN: CICLO")
+                    print(f"\n  Hijo: {vecino_etiqueta}. DECISIÓN: CICLO")
                     continue
 
                 g_hijo = g + peso
                 h_hijo = matriz_heuristica[vecino_idx][idx_objetivo]
                 f_hijo = g_hijo + h_hijo
                 
-                print(f"  - Padre: {nodo_actual_etiqueta}, Hijo: {vecino_etiqueta}, peso: {peso}, g_hijo: {g_hijo}, h_hijo: {h_hijo}, f_hijo: {f_hijo}")
+                print(f"\n  Nodo: {nodo_actual_etiqueta}, Nodo hijo: {vecino_etiqueta}, Peso: {peso}, Dist_recorrida: {g_hijo}, Dist_por_recorrer: {h_hijo}, Total: {f_hijo}")
 
                 nueva_ruta = ruta + [vecino_idx]
                 hijo_id = '->'.join([etiquetas[i] for i in nueva_ruta])
                 label_text = f"{vecino_etiqueta}\ng={g_hijo} h={h_hijo} f={f_hijo}"
 
+                hijo_sera_podado = padre_fue_podado or (f_hijo > Hmax)
+
                 if tree_graph is not None:
-                    tree_graph.add_node(hijo_id, label_text=label_text, pruned=False)
+                    tree_graph.add_node(hijo_id, label_text=label_text, pruned=hijo_sera_podado)
                     tree_graph.add_edge(nodo_actual_id, hijo_id)
 
-                if f_hijo > Hmax:
-                    print(f"    DECISIÓN: PODADO (f_hijo={f_hijo} > Hmax={Hmax})")
-                    if tree_graph is not None:
-                        tree_graph.nodes[hijo_id]['pruned'] = True
-                    continue
+                if f_hijo > Hmax and not padre_fue_podado:
+                    print(f"    DECISIÓN: MARCADO COMO PODADO (f_hijo={f_hijo} > Hmax={Hmax}), pero se sigue explorando para visualización.")
                 
-                if g_hijo >= best_g[vecino_idx]:
-                    print(f"    DECISIÓN: NO MEJOR (g_hijo={g_hijo} >= mejor_g[{vecino_etiqueta}]={best_g[vecino_idx]})")
-                    continue
-
                 print(f"    DECISIÓN: ENCOLADO")
-                best_g[vecino_idx] = g_hijo
-                pq.put((f_hijo, vecino_idx, g_hijo, nueva_ruta))
+                pq.put((f_hijo, vecino_idx, g_hijo, nueva_ruta, hijo_sera_podado))
                 
-    print("\n--- No se encontró solución ---")
-    return None, float('inf'), tree_graph
+    print("\n--- Búsqueda Finalizada ---")
+    return primera_ruta_encontrada, costo_primera_ruta, tree_graph
 
-def dibujar_arbol_busqueda(tree_graph, ruta_final=None, titulo="Árbol de búsqueda - Ramificación y Poda"):
+def dibujar_arbol_busqueda(tree_graph, ruta_final=None, titulo="Arbol - Ramificación y Poda con Subestimacion"):
     import matplotlib.pyplot as plt
     import networkx as nx
 
     if tree_graph is None or len(tree_graph) == 0:
-        print("No hay árbol de búsqueda para dibujar (faltan librerías o el árbol está vacío).")
+        print("No hay arbol de búsqueda para dibujar (faltan librerías o arbol vacío)")
         return
 
     # === Función auxiliar para obtener posiciones jerárquicas ===
@@ -269,7 +275,7 @@ if __name__ == "__main__":
                 print(f"Costo total : {costo_final}")
                 print("-" * 35)
             else:
-                print("\nNo se encontró una ruta al objetivo que cumpla con las restricciones.")
+                print("\n❗ No se encontró una ruta al objetivo que cumpla con las restricciones.")
 
             if LIBS_AVAILABLE:
                 dibujar_arbol_busqueda(arbol_busqueda, ruta_final)
