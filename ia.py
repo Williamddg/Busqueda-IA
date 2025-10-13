@@ -1,4 +1,4 @@
-# ia.py con comentarios detallados
+# ia.py - Versión en Español
 
 import csv
 import os
@@ -12,399 +12,285 @@ from queue import PriorityQueue
 try:
     import networkx as nx
     import matplotlib.pyplot as plt
-    LIBS_AVAILABLE = True
+    LIBRERIAS_GRAFICAS_DISPONIBLES = True
 except ImportError:
-    LIBS_AVAILABLE = False
+    LIBRERIAS_GRAFICAS_DISPONIBLES = False
 
-def cargar_matriz(nombre_archivo):
+def cargar_matriz_desde_csv(ruta_archivo):
     """
-    Carga una matriz de adyacencia y las etiquetas de los nodos desde un archivo CSV.
-
-    El formato esperado del CSV es:
-    - La primera fila contiene las etiquetas de los nodos (ej: A;B;C;...). 
-    - Las filas siguientes representan la matriz, donde la primera columna es la etiqueta
-      del nodo de origen y el resto de los valores son los pesos de las aristas.
-    - El delimitador debe ser punto y coma (;).
+    Carga una matriz de adyacencia y los nombres de los nodos desde un archivo CSV.
 
     Args:
-        nombre_archivo (str): La ruta al archivo CSV.
+        ruta_archivo (str): La ruta al archivo CSV.
 
     Returns:
-        tuple: Una tupla conteniendo la matriz (list of lists) y las etiquetas (list of str).
-               Si el archivo no existe o hay un error de formato, retorna (None, None).
+        tuple: Una tupla (matriz, nombres_nodos). Si hay error, retorna (None, None).
     """
     matriz = []
-    etiquetas = []
-    # Comprueba si el archivo existe antes de intentar abrirlo.
-    if not os.path.exists(nombre_archivo):
+    nombres_nodos = []
+    if not os.path.exists(ruta_archivo):
         return None, None
     try:
-        with open(nombre_archivo, mode='r', newline='', encoding='utf-8') as archivo_csv:
+        with open(ruta_archivo, mode='r', newline='', encoding='utf-8') as archivo_csv:
             lector_csv = csv.reader(archivo_csv, delimiter=';')
-            
-            # La primera fila son los encabezados (etiquetas de los nodos). Se omite el primer elemento.
             encabezados = next(lector_csv)[1:]
-            etiquetas = encabezados
-            
-            # Itera sobre las filas restantes del CSV para construir la matriz.
+            nombres_nodos = encabezados
             for fila in lector_csv:
-                if not fila:  # Ignorar filas vacías
+                if not fila:
                     continue
-                # Convierte los valores de la fila a enteros, omitiendo la primera columna (etiqueta).
                 fila_numerica = [int(valor) for valor in fila[1:]]
                 matriz.append(fila_numerica)
     except (ValueError, IndexError):
-        # Captura errores si el CSV no tiene el formato numérico esperado o está mal estructurado.
-        print(f"Error: El archivo CSV '{nombre_archivo}' no tiene el formato esperado o contiene valores no numéricos.")
+        print(f"Error: El archivo CSV '{ruta_archivo}' no tiene el formato esperado.")
         return None, None
-    return matriz, etiquetas
+    return matriz, nombres_nodos
 
-def busqueda_ramificacion_poda(matriz_principal, matriz_heuristica, etiquetas, inicio, objetivo, Hmax):
+def busqueda_ramificacion_y_poda(matriz_costos, matriz_heuristica, nombres_nodos, nodo_inicio, nodo_objetivo, costo_maximo_f):
     """
     Implementa una búsqueda de Ramificación y Poda con Subestimación (Branch and Bound).
 
-    Características principales de esta implementación:
-    1.  **Visualización Completa**: El algoritmo está modificado para no detenerse al podar una rama.
-        En su lugar, la sigue explorando para poder generar un árbol de búsqueda visual completo.
-        Las ramas "podadas" se marcan como tal, pero su exploración continúa.
-    2.  **Sin Optimización de Ruta a Nodo**: Se ha eliminado la optimización 'best_g' que evitaría
-        explorar caminos más caros a un nodo ya visitado. Esto se hace para asegurar que el árbol
-        visual contenga absolutamente todas las rutas posibles que no formen ciclos.
-    3.  **Primera Solución**: El algoritmo devuelve la primera ruta válida que encuentra hacia el objetivo,
-        pero no se detiene en ese momento, sino que continúa hasta agotar la cola de prioridad para
-        completar el árbol.
-    4.  **Parada en Objetivo**: Una vez que una rama específica alcanza el nodo objetivo, esa rama
-        deja de expandirse.
-
-    Args:
-        matriz_principal (list): Matriz de adyacencia con los costos reales (g).
-        matriz_heuristica (list): Matriz con los valores heurísticos (h) entre nodos.
-        etiquetas (list): Lista de nombres de los nodos.
-        inicio (str): Nodo inicial.
-        objetivo (str): Nodo objetivo.
-        Hmax (int): Límite superior de costo (f) para la poda.
-
-    Returns:
-        tuple: (ruta_final, costo_final, arbol_de_busqueda).
+    Características de esta implementación:
+    1.  **Visualización Completa**: Sigue explorando ramas "podadas" para generar un árbol visual completo.
+    2.  **Sin Optimización de Ruta a Nodo**: No usa 'best_g', para asegurar que el árbol visual contenga todas las rutas.
+    3.  **Primera Solución**: Devuelve la primera ruta válida encontrada, pero continúa para completar el árbol.
+    4.  **Parada en Objetivo**: Una rama de exploración se detiene al alcanzar el nodo objetivo.
     """
     try:
-        idx_inicio = etiquetas.index(inicio)
-        idx_objetivo = etiquetas.index(objetivo)
+        indice_inicio = nombres_nodos.index(nodo_inicio)
+        indice_objetivo = nombres_nodos.index(nodo_objetivo)
     except ValueError as e:
-        print(f"Error: Nodo '{e.args[0].split()[0]}' no encontrado en las etiquetas.")
+        print(f"Error: Nodo '{e.args[0].split()[0]}' no encontrado en los nombres de nodos.")
         return None, float('inf'), None
 
-    # Cola de prioridad para gestionar los nodos a expandir. Ordena por el costo 'f'.
-    pq = PriorityQueue()
-    # Grafo de NetworkX para construir el árbol de búsqueda visual.
-    tree_graph = nx.DiGraph() if LIBS_AVAILABLE else None
+    cola_prioridad = PriorityQueue()
+    arbol_visual = nx.DiGraph() if LIBRERIAS_GRAFICAS_DISPONIBLES else None
 
     # --- Inicialización del Nodo Raíz ---
-    g_inicial = 0  # Costo del camino desde el inicio hasta el nodo actual.
-    h_inicial = matriz_heuristica[idx_inicio][idx_objetivo] # Costo heurístico estimado hasta el objetivo.
-    f_inicial = g_inicial + h_inicial # Costo total estimado (g + h).
+    costo_g_inicial = 0
+    costo_h_inicial = matriz_heuristica[indice_inicio][indice_objetivo]
+    costo_f_inicial = costo_g_inicial + costo_h_inicial
+    ruta_inicial = [indice_inicio]
+    id_nodo_inicial = nombres_nodos[indice_inicio]
     
-    ruta_inicial = [idx_inicio]
-    nodo_id_inicial = etiquetas[idx_inicio]
-    
-    # La tupla en la cola de prioridad contiene:
-    # (costo_f, indice_nodo, costo_g, ruta_actual, fue_padre_podado)
-    # 'fue_padre_podado' es un booleano para propagar el estado de poda a los descendientes.
-    pq.put((f_inicial, idx_inicio, g_inicial, ruta_inicial, False))
+    # La tupla en la cola contiene: (costo_f, indice_nodo, costo_g, ruta, es_rama_podada)
+    cola_prioridad.put((costo_f_inicial, indice_inicio, costo_g_inicial, ruta_inicial, False))
 
-    if tree_graph is not None:
-        # Añade el nodo raíz al grafo visual. Se guarda el texto completo para usos futuros,
-        # aunque la visualización final solo muestre el nombre del nodo.
-        label_text = f"{etiquetas[idx_inicio]}\ng={g_inicial} h={h_inicial} f={f_inicial}"
-        tree_graph.add_node(nodo_id_inicial, label_text=label_text, pruned=False)
+    if arbol_visual is not None:
+        texto_etiqueta = f"{nombres_nodos[indice_inicio]}\ng={costo_g_inicial} h={costo_h_inicial} f={costo_f_inicial}"
+        arbol_visual.add_node(id_nodo_inicial, label_text=texto_etiqueta, pruned=False)
 
-    # Variables para almacenar la primera solución válida encontrada.
-    primera_ruta_encontrada = None
+    primera_ruta_valida = None
     costo_primera_ruta = float('inf')
 
     print("\n" + "="*50)
     print("--- Iniciando Búsqueda (Modo Visualización Total) ---")
     print("="*50)
-    print(f"Inicio: {inicio}, Objetivo: {objetivo}, Límite Hmax = {Hmax}\n")
+    print(f"Inicio: {nodo_inicio}, Objetivo: {nodo_objetivo}, Límite Hmax = {costo_maximo_f}\n")
 
     # --- Bucle Principal de Búsqueda ---
-    # El bucle se ejecuta hasta que no queden nodos por explorar en la cola de prioridad.
-    while not pq.empty():
-        f, nodo_actual_idx, g, ruta, padre_fue_podado = pq.get()
+    while not cola_prioridad.empty():
+        costo_f, indice_nodo_actual, costo_g, ruta_actual, es_rama_podada = cola_prioridad.get()
         
-        nodo_actual_etiqueta = etiquetas[nodo_actual_idx]
-        # El ID único de un nodo en el árbol visual es la ruta completa hasta él.
-        nodo_actual_id = '->'.join([etiquetas[i] for i in ruta])
-        h_actual = matriz_heuristica[nodo_actual_idx][idx_objetivo]
+        nombre_nodo_actual = nombres_nodos[indice_nodo_actual]
+        id_nodo_actual = '->'.join([nombres_nodos[i] for i in ruta_actual])
+        costo_h_actual = matriz_heuristica[indice_nodo_actual][indice_objetivo]
 
-        # Si el nodo padre fue podado, este nodo también se marca como podado.
-        # Esto asegura la propagación del estado de poda a través de las ramas.
-        if padre_fue_podado and tree_graph is not None:
-            tree_graph.nodes[nodo_actual_id]['pruned'] = True
+        if es_rama_podada and arbol_visual is not None:
+            arbol_visual.nodes[id_nodo_actual]['pruned'] = True
 
         # --- Bloque de Información en Terminal ---
         print(f"\n--------------------------------------------------")
-        print(f"Ruta Actual: {nodo_actual_id}")
-        print(f"-- Expandiendo Nodo: [{nodo_actual_etiqueta}]")
-        print(f"   Dist Recorrida (g)    = {g}")
-        print(f"   Dist Por Recorrer (h) = {h_actual}")
-        print(f"   Total (f)             = {f}")
-        if padre_fue_podado:
+        print(f"Ruta Actual: {id_nodo_actual}")
+        print(f"-- Expandiendo Nodo: [{nombre_nodo_actual}]")
+        print(f"   Dist Recorrida (g)    = {costo_g}")
+        print(f"   Dist Por Recorrer (h) = {costo_h_actual}")
+        print(f"   Total (f)             = {costo_f}")
+        if es_rama_podada:
             print("   (Rama previamente marcada como podada)")
 
         # --- Verificación de Nodo Objetivo ---
-        if nodo_actual_idx == idx_objetivo:
-            # Si es la primera vez que llegamos al objetivo por una ruta válida...
-            if not padre_fue_podado and primera_ruta_encontrada is None:
+        if indice_nodo_actual == indice_objetivo:
+            if not es_rama_podada and primera_ruta_valida is None:
                 print("\n✅ Nodo Objetivo Encontrado")
-                print(f"   Costo (Dist Recorrida): {g}")
-                primera_ruta_encontrada = [etiquetas[i] for i in ruta]
-                costo_primera_ruta = g
+                print(f"   Costo (Dist Recorrida): {costo_g}")
+                primera_ruta_valida = [nombres_nodos[i] for i in ruta_actual]
+                costo_primera_ruta = costo_g
             
-            # Se detiene la expansión de ESTA rama para no generar hijos desde el objetivo.
             print(f"   -> Rama finalizada en el objetivo. No se expande más.")
             continue
 
         # --- Expansión de Nodos Vecinos (Hijos) ---
-        for vecino_idx, peso in enumerate(matriz_principal[nodo_actual_idx]):
-            if peso > 0:  # Si existe un camino al vecino
-                vecino_etiqueta = etiquetas[vecino_idx]
+        for indice_vecino, costo_arista in enumerate(matriz_costos[indice_nodo_actual]):
+            if costo_arista > 0:
+                nombre_vecino = nombres_nodos[indice_vecino]
                 
-                print(f"\n    -> Evaluando hijo: [{vecino_etiqueta}]")
+                print(f"\n    -> Evaluando hijo: [{nombre_vecino}]")
 
-                # 1. Detección de Ciclos
-                if vecino_idx in ruta:
-                    print(f"       DECISIÓN: Rechazado (El nodo ya fue visitado en esta ruta)")
+                if indice_vecino in ruta_actual:
+                    print(f"       DECISIÓN: CICLO (El nodo ya está en la ruta actual)")
                     continue
 
-                # 2. Cálculo de Costos para el Hijo
-                g_hijo = g + peso
-                h_hijo = matriz_heuristica[vecino_idx][idx_objetivo]
-                f_hijo = g_hijo + h_hijo
+                costo_g_hijo = costo_g + costo_arista
+                costo_h_hijo = matriz_heuristica[indice_vecino][indice_objetivo]
+                costo_f_hijo = costo_g_hijo + costo_h_hijo
                 
-                print(f"       - Peso del camino:       {peso}")
-                print(f"       - Dist Recorrida (g):    {g_hijo}")
-                print(f"       - Dist Por Recorrer (h): {h_hijo}")
-                print(f"       - Total (f):             {f_hijo}")
+                print(f"       - Peso del camino:       {costo_arista}")
+                print(f"       - Dist Recorrida (g):    {costo_g_hijo}")
+                print(f"       - Dist Por Recorrer (h): {costo_h_hijo}")
+                print(f"       - Total (f):             {costo_f_hijo}")
 
-                # 3. Creación del Nodo Hijo para el Grafo Visual
-                nueva_ruta = ruta + [vecino_idx]
-                hijo_id = '->'.join([etiquetas[i] for i in nueva_ruta])
-                label_text = f"{vecino_etiqueta}\ng={g_hijo} h={h_hijo} f={f_hijo}"
+                nueva_ruta = ruta_actual + [indice_vecino]
+                id_hijo = '->'.join([nombres_nodos[i] for i in nueva_ruta])
+                texto_etiqueta = f"{nombre_vecino}\ng={costo_g_hijo} h={costo_h_hijo} f={costo_f_hijo}"
 
-                # Un hijo se considera podado si su padre ya lo estaba, o si su costo 'f' supera Hmax.
-                hijo_sera_podado = padre_fue_podado or (f_hijo > Hmax)
+                marcar_hijo_como_podado = es_rama_podada or (costo_f_hijo > costo_maximo_f)
 
-                if tree_graph is not None:
-                    tree_graph.add_node(hijo_id, label_text=label_text, pruned=hijo_sera_podado)
-                    tree_graph.add_edge(nodo_actual_id, hijo_id)
+                if arbol_visual is not None:
+                    arbol_visual.add_node(id_hijo, label_text=texto_etiqueta, pruned=marcar_hijo_como_podado)
+                    arbol_visual.add_edge(id_nodo_actual, id_hijo)
 
-                # 4. Lógica de Poda (solo para información en terminal)
-                # Si el costo supera Hmax y no venía ya de una rama podada, se informa.
-                if f_hijo > Hmax and not padre_fue_podado:
-                    print(f"       DECISIÓN: Podado (Total={f_hijo} > H={Hmax}), continuamos para visualización completa del arbol.")
+                if costo_f_hijo > costo_maximo_f and not es_rama_podada:
+                    print(f"       DECISIÓN: MARCADO COMO PODADO (Total={costo_f_hijo} > Hmax={costo_maximo_f}), pero se sigue explorando.")
                 
-                # 5. Añadir a la Cola de Prioridad
-                # El nodo se añade a la cola de todas formas para asegurar la visualización completa.
-                print(f"       DECISIÓN: Aceptado")
-                pq.put((f_hijo, vecino_idx, g_hijo, nueva_ruta, hijo_sera_podado))
+                print(f"       DECISIÓN: ENCOLADO")
+                cola_prioridad.put((costo_f_hijo, indice_vecino, costo_g_hijo, nueva_ruta, marcar_hijo_como_podado))
                 
     print("\n" + "="*50)
     print("--- Búsqueda Finalizada ---")
     print("="*50)
-    return primera_ruta_encontrada, costo_primera_ruta, tree_graph
+    return primera_ruta_valida, costo_primera_ruta, arbol_visual
 
-def dibujar_arbol_busqueda(tree_graph, ruta_final=None, titulo="Arbol - Ramificación y Poda con Subestimacion"):
+def dibujar_arbol_de_busqueda(arbol_visual, ruta_optima=None, titulo="Árbol de Búsqueda - Ramificación y Poda"):
     """
     Dibuja el árbol de búsqueda completo generado por el algoritmo.
-
-    Utiliza `matplotlib` y `networkx`. La disposición de los nodos es jerárquica.
-
-    Args:
-        tree_graph (networkx.DiGraph): El grafo del árbol a dibujar.
-        ruta_final (list, optional): La lista de nodos de la ruta final para resaltarla.
-        titulo (str, optional): Título del gráfico.
     """
-    # Si las librerías no están disponibles o el árbol está vacío, no hace nada.
-    if tree_graph is None or len(tree_graph) == 0:
-        print("No hay arbol de búsqueda para dibujar (faltan librerías o arbol vacío)")
+    if arbol_visual is None or len(arbol_visual) == 0:
+        print("No hay árbol de búsqueda para dibujar (faltan librerías o árbol vacío)")
         return
 
-    # --- Función Auxiliar para Layout Jerárquico ---
-    # Esta función calcula las posiciones (x, y) de cada nodo para que el árbol
-    # se dibuje de arriba hacia abajo de forma ordenada, sin necesidad de 'pygraphviz'.
-    def hierarchy_pos(G, root=None, width=1.0, vert_gap=0.4, vert_loc=0, xcenter=0.5, pos=None, parent=None):
-        if pos is None:
-            pos = {root: (xcenter, vert_loc)}
+    def calcular_posicion_jerarquica(grafo, nodo_raiz=None, ancho=1.0, espacio_vertical=0.4, posicion_vertical=0, centro_x=0.5, posiciones=None, nodo_padre=None):
+        if posiciones is None:
+            posiciones = {nodo_raiz: (centro_x, posicion_vertical)}
         else:
-            pos[root] = (xcenter, vert_loc)
-        children = list(G.successors(root))
-        if len(children) != 0:
-            dx = width / len(children)
-            nextx = xcenter - width / 2 - dx / 2
-            for child in children:
-                nextx += dx
-                pos = hierarchy_pos(G, root=child, width=dx, vert_gap=vert_gap,
-                                    vert_loc=vert_loc - vert_gap, xcenter=nextx, pos=pos, parent=root)
-        return pos
+            posiciones[nodo_raiz] = (centro_x, posicion_vertical)
+        nodos_hijos = list(grafo.successors(nodo_raiz))
+        if len(nodos_hijos) != 0:
+            delta_x = ancho / len(nodos_hijos)
+            siguiente_x = centro_x - ancho / 2 - delta_x / 2
+            for hijo in nodos_hijos:
+                siguiente_x += delta_x
+                posiciones = calcular_posicion_jerarquica(grafo, nodo_raiz=hijo, ancho=delta_x, espacio_vertical=espacio_vertical,
+                                    posicion_vertical=posicion_vertical - espacio_vertical, centro_x=siguiente_x, posiciones=posiciones, nodo_padre=nodo_raiz)
+        return posiciones
 
-    # Se busca el nodo raíz del árbol (el que no tiene nodos padre).
-    posibles_raices = [n for n in tree_graph.nodes if tree_graph.in_degree(n) == 0]
-    root = posibles_raices[0] if posibles_raices else list(tree_graph.nodes)[0]
-
-    # Se calculan las posiciones de todos los nodos.
-    pos = hierarchy_pos(tree_graph, root=root, width=2.5, vert_gap=0.3)
+    posibles_raices = [n for n in arbol_visual.nodes if arbol_visual.in_degree(n) == 0]
+    nodo_raiz = posibles_raices[0] if posibles_raices else list(arbol_visual.nodes)[0]
+    posiciones = calcular_posicion_jerarquica(arbol_visual, nodo_raiz=nodo_raiz, ancho=2.5, espacio_vertical=0.3)
 
     # --- Verificación de Seguridad para Colores ---
-    # Este bucle asegura que si un nodo padre está podado, todos sus descendientes
-    # también se marquen como podados para la visualización. Es una salvaguarda para
-    # garantizar la coherencia visual del árbol.
-    for node in list(tree_graph.nodes):
+    for id_nodo in list(arbol_visual.nodes):
         try:
-            ancestors = nx.ancestors(tree_graph, node)
-            for ancestor in ancestors:
-                if tree_graph.nodes[ancestor].get('pruned', False):
-                    tree_graph.nodes[node]['pruned'] = True
+            ancestros = nx.ancestors(arbol_visual, id_nodo)
+            for ancestro in ancestros:
+                if arbol_visual.nodes[ancestro].get('pruned', False):
+                    arbol_visual.nodes[id_nodo]['pruned'] = True
                     break
         except nx.NetworkXError:
-            pass # Ignorar si el nodo no se encuentra por alguna razón
+            pass
 
     # --- Configuración de Estilos de Nodos y Etiquetas ---
-    node_colors = []
-    node_borders = []
-    labels = {}
+    colores_nodos = []
+    bordes_nodos = []
+    etiquetas_nodos = {}
 
-    # Función para comprobar si un nodo (identificado por su ruta 'A->B->C')
-    # pertenece a la ruta final encontrada.
-    def pertenece_a_ruta(nodo):
-        if not ruta_final:
+    def pertenece_a_ruta(id_nodo_arbol):
+        if not ruta_optima:
             return False
-        # Genera todas las sub-rutas posibles de la ruta final (ej: 'A', 'A->B', 'A->B->C')
-        posibles = ['->'.join(ruta_final[:i+1]) for i in range(len(ruta_final))]
-        return nodo in posibles
+        posibles_rutas_str = ['->'.join(ruta_optima[:i+1]) for i in range(len(ruta_optima))]
+        return id_nodo_arbol in posibles_rutas_str
 
-    # Itera sobre cada nodo para asignarle un color y una etiqueta.
-    for node, data in tree_graph.nodes(data=True):
-        # Extrae solo el nombre del nodo (ej: 'A') del texto completo guardado.
-        label = data.get('label_text', node).split('\n')[0]
+    for id_nodo, datos_nodo in arbol_visual.nodes(data=True):
+        etiqueta_final = datos_nodo.get('label_text', id_nodo).split('\n')[0]
         
-        if data.get('pruned', False):
-            # Nodos podados: color rojo y símbolo ❌.
-            label += "✖️"
-            node_colors.append('#ffb3b3')  # Rojo claro
-            node_borders.append('darkred')
-        elif pertenece_a_ruta(node):
-            # Nodos de la ruta final: color verde.
-            node_colors.append('#7CFC00')  # Verde brillante
-            node_borders.append('green')
+        if datos_nodo.get('pruned', False):
+            etiqueta_final += " ❌"
+            colores_nodos.append('#ffb3b3')
+            bordes_nodos.append('darkred')
+        elif pertenece_a_ruta(id_nodo):
+            colores_nodos.append('#7CFC00')
+            bordes_nodos.append('green')
         else:
-            # Otros nodos explorados: color azul.
-            node_colors.append('#ADD8E6')  # Azul celeste
-            node_borders.append('gray')
-        labels[node] = label
+            colores_nodos.append('#ADD8E6')
+            bordes_nodos.append('gray')
+        etiquetas_nodos[id_nodo] = etiqueta_final
 
     # --- Dibujo del Grafo con Matplotlib ---
     plt.figure(figsize=(14, 9))
-
-    # Dibuja los nodos con sus colores y bordes.
-    nx.draw_networkx_nodes(
-        tree_graph, pos,
-        node_color=node_colors,
-        node_size=1800,
-        edgecolors=node_borders,
-        linewidths=1.8
-    )
-
-    # Dibuja las aristas (flechas).
-    nx.draw_networkx_edges(
-        tree_graph, pos,
-        edge_color='gray',
-        arrows=True,
-        arrowstyle='-|>',
-        arrowsize=14
-    )
-
-    # Dibuja las etiquetas dentro de los nodos.
-    nx.draw_networkx_labels(
-        tree_graph, pos,
-        labels=labels,
-        font_size=8,
-        font_weight='bold'
-    )
-
+    nx.draw_networkx_nodes(arbol_visual, posiciones, node_color=colores_nodos, node_size=1800, edgecolors=bordes_nodos, linewidths=1.8)
+    nx.draw_networkx_edges(arbol_visual, posiciones, edge_color='gray', arrows=True, arrowstyle='-|>', arrowsize=14)
+    nx.draw_networkx_labels(arbol_visual, posiciones, labels=etiquetas_nodos, font_size=8, font_weight='bold')
     plt.title(titulo, fontsize=14, fontweight='bold', pad=15)
-    plt.axis('off')  # Oculta los ejes x, y.
+    plt.axis('off')
     plt.tight_layout()
     plt.show()
 
 # --- Bloque Principal de Ejecución ---
-# Este código solo se ejecuta cuando el script es llamado directamente.
 if __name__ == "__main__":
-    # Construye las rutas a los archivos CSV basándose en la ubicación del script.
-    direccion = os.path.dirname(os.path.abspath(__file__))
-    nombre_matriz_principal = os.path.join(direccion, 'matriz_de_grafo.csv')
-    nombre_matriz_intermedia = os.path.join(direccion, 'matriz_intermedia.csv')
+    directorio_script = os.path.dirname(os.path.abspath(__file__))
+    ruta_matriz_costos = os.path.join(directorio_script, 'matriz_de_grafo.csv')
+    ruta_matriz_heuristica = os.path.join(directorio_script, 'matriz_intermedia.csv')
     
-    # Carga la matriz de costos reales.
-    matriz_principal, etiquetas = cargar_matriz(nombre_matriz_principal)
+    matriz_costos, nombres_nodos = cargar_matriz_desde_csv(ruta_matriz_costos)
     
-    if not matriz_principal:
-        print(f"\n❗ Error: No se pudo cargar la matriz principal '{nombre_matriz_principal}', Terminando")
+    if not matriz_costos:
+        print(f"\n❗ Error: No se pudo cargar la matriz de costos '{ruta_matriz_costos}', Terminando")
     else:
-        print("\n🆗 --- Matriz Principal Cargada Correctamente ---")
-        print("Nodos encontrados:", etiquetas)
+        print("\n🆗 --- Matriz de Costos Cargada Correctamente ---")
+        print("Nodos encontrados:", nombres_nodos)
         print("-" * 35)
 
-        # Carga la matriz heurística.
-        matriz_heuristica, etiquetas_heuristica = cargar_matriz(nombre_matriz_intermedia)
+        matriz_heuristica, nombres_nodos_heuristica = cargar_matriz_desde_csv(ruta_matriz_heuristica)
         
         if not matriz_heuristica:
-            # Si no hay archivo de heurística, se crea una matriz de ceros (h=0 para todo).
-            print("\n⚠️  No se encontro 'matriz_intermedia.csv'. Se usara heuristica h=0 por defecto.")
-            num_nodos = len(etiquetas)
-            matriz_heuristica = np.zeros((num_nodos, num_nodos), dtype=int).tolist()
+            print(f"\n⚠️  No se encontró '{{ruta_matriz_heuristica}}'. Se usará heurística h=0.")
+            cantidad_nodos = len(nombres_nodos)
+            matriz_heuristica = np.zeros((cantidad_nodos, cantidad_nodos), dtype=int).tolist()
         else:
-            print("\n🆗 --- Matriz Intermedia Cargada Correctamente ---")
-            # Valida que ambas matrices tengan los mismos nodos.
-            if etiquetas != etiquetas_heuristica:
-                print("❗ Los nodos de las matrices no coinciden, Terminando")
+            print("\n🆗 --- Matriz Heurística Cargada Correctamente ---")
+            if nombres_nodos != nombres_nodos_heuristica:
+                print("❗ Los nodos de las matrices no coinciden. Terminando.")
                 exit()
         print("-" * 35)
 
-        # Bucle para solicitar al usuario el valor de Hmax.
         while True:
             try:
-                HMAX = int(input("Ingrese el valor de H (entero mayor que 0): "))
-                if HMAX > 0:
+                COSTO_MAXIMO_F = int(input("Ingrese el valor de H (costo máximo total, entero > 0): "))
+                if COSTO_MAXIMO_F > 0:
                     break
                 else:
-                    print("\n⚠️  El valor negativo invalido. Ingrese un numero positivo\n")
+                    print("\n⚠️  El valor debe ser un número positivo.\n")
             except ValueError:
-                print("\n⚠️  Valor decimal invalido. Ingrese un numero entero\n")
+                print("\n⚠️  Valor inválido. Ingrese un número entero.\n")
 
-        # Nodos de inicio y fin (hardcodeados).
-        INICIO = 'A'
-        OBJETIVO = 'Z'
+        NODO_INICIO = 'A'
+        NODO_OBJETIVO = 'Z'
 
-        if INICIO not in etiquetas or OBJETIVO not in etiquetas:
-            print(f"❗ El nodo de inicio '{INICIO}' o de objetivo '{OBJETIVO}' no se encuentran en el grafo.")
+        if NODO_INICIO not in nombres_nodos or NODO_OBJETIVO not in nombres_nodos:
+            print(f"❗ El nodo de inicio '{NODO_INICIO}' o de objetivo '{NODO_OBJETIVO}' no se encuentran en el grafo.")
         else:
-            # Llama a la función principal de búsqueda.
-            ruta_final, costo_final, arbol_busqueda = busqueda_ramificacion_poda(
-                matriz_principal, matriz_heuristica, etiquetas, INICIO, OBJETIVO, HMAX
+            ruta_solucion, costo_solucion, arbol_resultado = busqueda_ramificacion_y_poda(
+                matriz_costos, matriz_heuristica, nombres_nodos, NODO_INICIO, NODO_OBJETIVO, COSTO_MAXIMO_F
             )
 
-            # Imprime el resultado final si se encontró una ruta.
-            if ruta_final:
+            if ruta_solucion:
                 print("\n\n--- Resultado Final ---")
-                print(f"Ruta hacia Nodo Objetivo: {' -> '.join(ruta_final)}")
-                print(f"Costo total : {costo_final}")
+                print(f"🔔 Ruta encontrada: {' -> '.join(ruta_solucion)}")
+                print(f"Costo total: {costo_solucion}")
                 print("-" * 35)
             else:
-                print("\n❗ No se encontró una ruta al objetivo que cumpla con las restricciones.")
+                print("\n🔔 No se encontró una ruta al objetivo que cumpla con las restricciones.")
 
-            # Llama a la función de dibujo si las librerías están disponibles.
-            if LIBS_AVAILABLE:
-                dibujar_arbol_busqueda(arbol_busqueda, ruta_final)
+            if LIBRERIAS_GRAFICAS_DISPONIBLES:
+                dibujar_arbol_de_busqueda(arbol_resultado, ruta_solucion)
             else:
                 print("\nPara visualizar el árbol de búsqueda, instale 'networkx' y 'matplotlib'.")
